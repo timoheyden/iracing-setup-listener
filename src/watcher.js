@@ -2,9 +2,9 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { fileURLToPath } from 'url';
-import { supabase, fetchBasePaths, fetchProviders, fetchCarChannels, insertPostedFile } from './supabase.js';
-import { sendFileToDiscord } from './discord.js';
+import {fileURLToPath} from 'url';
+import {supabase, fetchBasePaths, fetchProviders, fetchCarChannels, insertPostedFile} from './supabase.js';
+import {sendFileToDiscord} from './discord.js';
 
 /** Hilfsfunktionen */
 function log(message) {
@@ -14,15 +14,31 @@ function log(message) {
     fs.appendFileSync(path.join(dir, 'app.log'), `[${timestamp}] ${message}\n`);
     console.log(`[${timestamp}] ${message}`);
 }
+
 function getCarName(filePath, basePaths) {
-    // Annahme: [basePath]/<CarName>/<Provider>/...
-    const match = basePaths
-        .map(p => filePath.startsWith(p) ? p : null)
-        .filter(Boolean)[0];
-    if (!match) return null;
-    const rel = filePath.substring(match.length).replace(/^\/|\\/, ''); // nimmt nur nach basePath
-    return rel.split(/[\\/]/)[0];
+    for (const bp of basePaths) {
+        const rel = path.relative(bp.path, filePath);
+
+        // Datei liegt nicht unter diesem basePath
+        if (rel.startsWith("..") || path.isAbsolute(rel)) continue;
+
+        const carName = rel.split(path.sep)[0];
+        return carName || null;
+    }
 }
+
+function getClientIdForFile(filePath, basePaths) {
+    for (const bp of basePaths) {
+        const rel = path.relative(bp.path, filePath);
+
+        // Datei liegt nicht unter diesem basePath
+        if (rel.startsWith("..") || path.isAbsolute(rel)) continue;
+
+        return bp.client_id;
+    }
+    return null;
+}
+
 function hashFileWithRetry(filePath, retries = 5, delayMs = 1000) {
     let attempt = 0;
     return new Promise((resolve, reject) => {
@@ -40,6 +56,7 @@ function hashFileWithRetry(filePath, retries = 5, delayMs = 1000) {
                     reject(e);
             }
         }
+
         tryHash();
     });
 }
@@ -52,36 +69,44 @@ const logPath = path.join(__dirname, '..', 'logs');
 // START
 async function main() {
     log('Starte Watcher-Service (mit DB-Konfiguration)...');
-    const allBasePaths = await fetchBasePaths(); // jetzt: alle Einträge
+    const allBasePaths = await fetchBasePaths();
     const localBasePaths = allBasePaths
         .filter(bp => bp.enabled && fs.existsSync(bp.path))
-        .map(bp => bp.path);
+        .map(bp => ({
+            path: bp.path,
+            client_id: bp.client_id
+        }));
 
     const providers = await fetchProviders();
-    const carChannels = await fetchCarChannels();
+    
+    const carChannelsArray = await fetchCarChannels();
+    const carChannels = {};
+    carChannelsArray.forEach(c => {
+        carChannels[c.car_folder] = {
+            discord_channel_id: c.discord_channel_id
+        };
+    });
 
     if (!localBasePaths.length) throw new Error('Keine lokalen basePaths gefunden!');
     if (!providers.length) throw new Error('Keine Provider in DB hinterlegt!');
-    log(`Lokale basePaths (überwacht wird NUR, was lokal existiert):\n${localBasePaths.join('\n')}\nmit Providern:\n${providers.join(', ')}`);
+    log('Lokale basePaths (überwacht wird NUR, was lokal existiert):\n' +
+        localBasePaths.map(bp => bp.path).join('\n'));
+    log('mit Providern:\n' +
+        providers.map(p => p.provider_path).join(', '));
 
     // 2. Alle basePaths/Provider-Kombis als Globs
     const watchGlobs = [];
-    for (const basePath of basePaths) {
+    for (const bp of localBasePaths) {
         for (const prov of providers) {
-            // zB /iracing/setups/*/<Provider>/**
-            // Windows: Backslash raus (Chokidar verträgt Forward-Slash bei Globs am besten)
-            const glob = path.join(basePath, '*/', prov, '**/*').replace(/\\/g, '/');
+            const glob = path.join(bp.path, '*/', prov.provider_path, '**/*').replace(/\\/g, '/');
             watchGlobs.push(glob);
         }
     }
+
     log(`Setze Watcher auf folgende Globs:\n` + watchGlobs.join('\n'));
 
-    function getClientId() {
-        try { return os.hostname(); } catch { return 'unknown-client'; }
-    }
-    
     // 3. Watcher starten
-    const watcher = chokidar.watch(watchGlobs, { persistent: true, ignoreInitial: true });
+    const watcher = chokidar.watch(watchGlobs, {persistent: true, ignoreInitial: true});
 
     watcher.on('ready', () => {
         log('Watcher bereit! Überwache auf neue Dateien...');
@@ -93,15 +118,22 @@ async function main() {
             const hash = await hashFileWithRetry(filepath);
             log(`Hash berechnet: ${hash}`);
             // Versuche Hash in DB zu registrieren (atomic)
-            const { inserted } = await insertPostedFile(hash, filepath, getClientId());
+            const clientId = getClientIdForFile(filepath, localBasePaths);
+            if (!clientId) {
+                log(`Keine client_id zu basePath gefunden für Datei: ${filepath}`);
+                return;
+            }
+            
+            const {inserted} = await insertPostedFile(hash, filepath, clientId);
             if (!inserted) {
                 log(`Bereits bekannt (Duplikat, anderer Client?). Datei: ${filepath}, Hash: ${hash}`);
                 return;
             }
+            
             // Channel/Thread suchen
-            const carName = getCarName(filepath, basePaths);
+            const carName = getCarName(filepath, localBasePaths);
             if (!carName || !carChannels[carName]) {
-                log(`Kein Discord Channel/Webhook zu Car-Folder "${carName}" hinterlegt. Datei: ${filepath}`);
+                log(`Kein Discord Channel zu Car-Folder "${carName}" hinterlegt. Datei: ${filepath}`);
                 return;
             }
             const channelId = carChannels[carName].discord_channel_id;
@@ -110,7 +142,7 @@ async function main() {
                 return;
             }
             // Nachricht bauen
-            const postMsg = `:inbox_tray: **Neues Setup für \`${carName}\` erkannt:**\n\`${path.basename(filepath)}\``;
+            const postMsg = `:inbox_tray: **New setup detected for \`${carName}\`**:\n\`${path.basename(filepath)}\``;
 
             try {
                 await sendFileToDiscord(channelId, filepath, postMsg);
@@ -119,7 +151,10 @@ async function main() {
                 log(`Fehler beim Posten an Discord: ${err.message || err.toString()}`);
             }
         } catch (e) {
-            log(`Fehler: ${e.message || e.toString()} für Datei: ${filepath}`);
+            log(`Fehler bei Datei: ${filepath}\n` +
+                `Name: ${e.name}\n` +
+                `Message: ${e.message}\n` +
+                `Stack:\n${e.stack}`);
         }
     });
 }
