@@ -4,7 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { supabase, fetchBasePaths, fetchProviders, fetchCarChannels, insertPostedFile } from './supabase.js';
-import { postToDiscordWebhook } from './discord.js';
+import { sendFileToDiscord } from './discord.js';
 
 /** Hilfsfunktionen */
 function log(message) {
@@ -104,15 +104,20 @@ async function main() {
                 log(`Kein Discord Channel/Webhook zu Car-Folder "${carName}" hinterlegt. Datei: ${filepath}`);
                 return;
             }
-            const webhookUrl = carChannels[carName].discord_webhook_url;
-            if (!webhookUrl) {
-                log(`Kein Discord Webhook für Channel zum Car "${carName}" hinterlegt.`);
+            const channelId = carChannels[carName].discord_channel_id;
+            if (!channelId) {
+                log(`Kein Discord Channel für Car "${carName}" hinterlegt.`);
                 return;
             }
-            // An Discord posten
+            // Nachricht bauen
             const postMsg = `:inbox_tray: **Neues Setup für \`${carName}\` erkannt:**\n\`${path.basename(filepath)}\``;
-            await postToDiscordWebhook(webhookUrl, postMsg);
-            log(`An Discord gepostet (Channel für "${carName}"): ${webhookUrl}`);
+
+            try {
+                await sendFileToDiscord(channelId, filepath, postMsg);
+                log(`An Discord gepostet (Channel für "${carName}"): ${channelId}`);
+            } catch (err) {
+                log(`Fehler beim Posten an Discord: ${err.message || err.toString()}`);
+            }
         } catch (e) {
             log(`Fehler: ${e.message || e.toString()} für Datei: ${filepath}`);
         }
