@@ -1,0 +1,17 @@
+{
+  "name": "iracing-setup-watcher",
+  "version": "1.0.0",
+  "description": "Watcher-Service für iRacing Setups, mit Supabase-Konfiguration und Discord-Anbindung.",
+  "main": "src/watcher.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/watcher.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.38.3",
+    "axios": "^1.6.7",
+    "chokidar": "^3.5.3",
+    "discord.js": "^14.25.1",
+    "dotenv": "^16.4.5"
+  }
+}
