@@ -3,18 +3,11 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import {fileURLToPath} from 'url';
-import {supabase, fetchBasePaths, fetchProviders, fetchCarChannels, insertPostedFile} from './supabase.js';
+import {fetchBasePaths, fetchProviders, fetchCarChannels, insertPostedFile} from './supabase.js';
 import {sendFileToDiscord} from './discord.js';
+import { log } from './logger.js';
 
 /** Hilfsfunktionen */
-function log(message) {
-    const timestamp = new Date().toISOString();
-    const dir = path.resolve(logPath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, {recursive: true});
-    fs.appendFileSync(path.join(dir, 'app.log'), `[${timestamp}] ${message}\n`);
-    console.log(`[${timestamp}] ${message}`);
-}
-
 function getCarName(filePath, basePaths) {
     for (const bp of basePaths) {
         const rel = path.relative(bp.path, filePath);

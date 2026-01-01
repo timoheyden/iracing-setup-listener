@@ -36,4 +36,4 @@ svc.on('error', (err) => {
 });
 
 // Service installieren
-svc.install();
+svc.uninstall();
