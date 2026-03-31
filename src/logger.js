@@ -1,9 +1,9 @@
-﻿import rfs from 'rotating-file-stream';
-import path from 'path';
-import fs from 'fs';
+﻿const rfs = require('rotating-file-stream');
+const path = require('path');
+const fs = require('fs');
 
 const logDirectory = path.join(process.env.PROGRAMDATA || 'C:\\ProgramData', 'iRacingSetupListener', 'logs');
-if (!fs.existsSync(logDirectory)) fs.mkdirSync(logDirectory, {recursive: true});
+if (!fs.existsSync(logDirectory)) fs.mkdirSync(logDirectory, { recursive: true });
 
 // Maximal 10MB pro Logfile, maximal 5 Files (ältere werden gelöscht)
 const logStream = rfs.createStream('app.log', {
@@ -14,9 +14,11 @@ const logStream = rfs.createStream('app.log', {
     compress: 'gzip'         // optional: Logfiles werden komprimiert
 });
 
-export function log(message) {
+function log(message) {
     const timestamp = new Date().toISOString();
     const out = `[${timestamp}] ${message}\n`;
     logStream.write(out);
     console.log(out.trim());
 }
+
+module.exports = { log };

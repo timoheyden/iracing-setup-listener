@@ -1,20 +1,17 @@
-﻿import chokidar from 'chokidar';
-import fs from 'fs';
-import path from 'path';
-import crypto from 'crypto';
-import {fileURLToPath} from 'url';
-import {fetchBasePaths, fetchProviders, fetchCarChannels, insertPostedFile} from './supabase.js';
-import {sendFileToDiscord} from './discord.js';
-import { log } from './logger.js';
+﻿const chokidar = require('chokidar');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { fetchBasePaths, fetchProviders, fetchCarChannels, insertPostedFile } = require('./supabase');
+const { sendFileToDiscord } = require('./discord');
+const { log } = require('./logger');
 
 /** Hilfsfunktionen */
 function getCarName(filePath, basePaths) {
     for (const bp of basePaths) {
         const rel = path.relative(bp.path, filePath);
-
         // Datei liegt nicht unter diesem basePath
         if (rel.startsWith("..") || path.isAbsolute(rel)) continue;
-
         const carName = rel.split(path.sep)[0];
         return carName || null;
     }
@@ -23,10 +20,7 @@ function getCarName(filePath, basePaths) {
 function getClientIdForFile(filePath, basePaths) {
     for (const bp of basePaths) {
         const rel = path.relative(bp.path, filePath);
-
-        // Datei liegt nicht unter diesem basePath
         if (rel.startsWith("..") || path.isAbsolute(rel)) continue;
-
         return bp.client_id;
     }
     return null;
@@ -49,15 +43,9 @@ function hashFileWithRetry(filePath, retries = 5, delayMs = 1000) {
                     reject(e);
             }
         }
-
         tryHash();
     });
 }
-
-// Dynamischer Projektpfad für Logs
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const logPath = path.join(__dirname, '..', 'logs');
 
 // START
 async function main() {
@@ -71,7 +59,6 @@ async function main() {
         }));
 
     const providers = await fetchProviders();
-    
     const carChannelsArray = await fetchCarChannels();
     const carChannels = {};
     carChannelsArray.forEach(c => {
@@ -82,10 +69,8 @@ async function main() {
 
     if (!localBasePaths.length) throw new Error('Keine lokalen basePaths gefunden!');
     if (!providers.length) throw new Error('Keine Provider in DB hinterlegt!');
-    log('Lokale basePaths (überwacht wird NUR, was lokal existiert):\n' +
-        localBasePaths.map(bp => bp.path).join('\n'));
-    log('mit Providern:\n' +
-        providers.map(p => p.provider_path).join(', '));
+    log('Lokale basePaths (überwacht wird NUR, was lokal existiert):\n' + localBasePaths.map(bp => bp.path).join('\n'));
+    log('mit Providern:\n' + providers.map(p => p.provider_path).join(', '));
 
     // 2. Alle basePaths/Provider-Kombis als Globs
     const watchGlobs = [];
@@ -99,7 +84,7 @@ async function main() {
     log(`Setze Watcher auf folgende Globs:\n` + watchGlobs.join('\n'));
 
     // 3. Watcher starten
-    const watcher = chokidar.watch(watchGlobs, {persistent: true, ignoreInitial: true});
+    const watcher = chokidar.watch(watchGlobs, { persistent: true, ignoreInitial: true });
 
     watcher.on('ready', () => {
         log('Watcher bereit! Überwache auf neue Dateien...');
@@ -116,13 +101,11 @@ async function main() {
                 log(`Keine client_id zu basePath gefunden für Datei: ${filepath}`);
                 return;
             }
-            
-            const {inserted} = await insertPostedFile(hash, filepath, clientId);
+            const { inserted } = await insertPostedFile(hash, filepath, clientId);
             if (!inserted) {
                 log(`Bereits bekannt (Duplikat, anderer Client?). Datei: ${filepath}, Hash: ${hash}`);
                 return;
             }
-            
             // Channel/Thread suchen
             const carName = getCarName(filepath, localBasePaths);
             if (!carName || !carChannels[carName]) {
@@ -136,7 +119,6 @@ async function main() {
             }
             // Nachricht bauen
             const postMsg = `:inbox_tray: **New setup detected for \`${carName}\`**:\n\`${path.basename(filepath)}\``;
-
             try {
                 await sendFileToDiscord(channelId, filepath, postMsg);
                 log(`An Discord gepostet (Channel für "${carName}"): ${channelId}`);

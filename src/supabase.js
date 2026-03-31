@@ -1,21 +1,19 @@
-﻿import { createClient } from '@supabase/supabase-js';
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
+﻿const { createClient } = require('@supabase/supabase-js');
+const { SUPABASE_URL, SUPABASE_KEY } = require('./config');
 
 /** Supabase-Client initialisieren */
-export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Hole alle aktiven basePaths für den Client
-export async function fetchBasePaths() {
+async function fetchBasePaths() {
     const { data, error } = await supabase
         .schema('iracing_watcher')
         .from('basepaths')
-        .select('path,client_id,enabled')
+        .select('path,client_id,enabled');
     if (error) throw error;
     return (data || []);
 }
 
-// Hole alle aktiven Provider-Namen
-export async function fetchProviders() {
+async function fetchProviders() {
     const { data, error } = await supabase
         .schema('iracing_watcher')
         .from('providers')
@@ -25,18 +23,16 @@ export async function fetchProviders() {
     return (data || []);
 }
 
-// Zuordnung Fahrzeugordner <-> Discord channel/webhook
-export async function fetchCarChannels() {
+async function fetchCarChannels() {
     const { data, error } = await supabase
         .schema('iracing_watcher')
         .from('iracing_channels')
         .select('car_folder, discord_channel_id');
     if (error) throw error;
-   return (data || []);
+    return (data || []);
 }
 
-// Versuche hash einzutragen - nur erster gewinnt!
-export async function insertPostedFile(hash, filepath, client_id) {
+async function insertPostedFile(hash, filepath, client_id) {
     try {
         const { error } = await supabase
             .schema('iracing_watcher')
@@ -53,3 +49,11 @@ export async function insertPostedFile(hash, filepath, client_id) {
         throw e;
     }
 }
+
+module.exports = {
+    supabase,
+    fetchBasePaths,
+    fetchProviders,
+    fetchCarChannels,
+    insertPostedFile
+};

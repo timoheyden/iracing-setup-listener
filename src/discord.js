@@ -1,10 +1,7 @@
-﻿// src/discord.js
-import { Client, GatewayIntentBits } from "discord.js";
-import { config } from "dotenv";
-config();
+﻿const { Client, GatewayIntentBits } = require("discord.js");
+require("dotenv").config();
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
-
 if (!TOKEN) {
     throw new Error("[discord.js] Bot-Token fehlt in .env (DISCORD_BOT_TOKEN)");
 }
@@ -25,7 +22,7 @@ let loginPromise = client.login(TOKEN).then(() => {
  * @param {string} [text] - Optionaler Nachrichtentext
  * @returns {Promise<boolean>}
  */
-export async function sendFileToDiscord(channelId, filePath, text = "") {
+async function sendFileToDiscord(channelId, filePath, text = "") {
     await loginPromise;
     try {
         const channel = await client.channels.fetch(channelId);
@@ -44,3 +41,5 @@ export async function sendFileToDiscord(channelId, filePath, text = "") {
         return false;
     }
 }
+
+module.exports = { sendFileToDiscord };
