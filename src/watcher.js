@@ -47,6 +47,24 @@ function hashFileWithRetry(filePath, retries = 5, delayMs = 1000) {
     });
 }
 
+function getProviderForFile(filePath, basePaths, providers) {
+    for (const bp of basePaths) {
+        const rel = path.relative(bp.path, filePath);
+        if (rel.startsWith("..") || path.isAbsolute(rel)) continue;
+
+        const segments = rel.split(path.sep);
+        if (segments.length < 2) return null;
+
+        const providerFolder = segments[1];
+        const match = providers.find(
+            p => p.provider_path.toLowerCase() === providerFolder.toLowerCase()
+        );
+
+        return match?.display_name || providerFolder;
+    }
+    return null;
+}
+
 // START
 async function main() {
     log('Starte Watcher-Service (mit DB-Konfiguration)...');
@@ -108,8 +126,13 @@ async function main() {
             }
             // Channel/Thread suchen
             const carName = getCarName(filepath, localBasePaths);
+            const providerName = getProviderForFile(filepath, localBasePaths, providers);
             if (!carName || !carChannels[carName]) {
                 log(`Kein Discord Channel zu Car-Folder "${carName}" hinterlegt. Datei: ${filepath}`);
+                return;
+            }
+            if (!providerName) {
+                log(`Kein Provider zu Datei ermittelbar: ${filepath}`);
                 return;
             }
             const channelId = carChannels[carName].discord_channel_id;
@@ -118,7 +141,10 @@ async function main() {
                 return;
             }
             // Nachricht bauen
-            const postMsg = `:inbox_tray: **New setup detected for \`${carName}\`**:\n\`${path.basename(filepath)}\``;
+            const postMsg =
+                `:inbox_tray: **New setup detected for \`${carName}\`**\n` +
+                `Provider: \`${providerName}\`\n` +
+                `Datei: \`${path.basename(filepath)}\``;
             try {
                 await sendFileToDiscord(channelId, filepath, postMsg);
                 log(`An Discord gepostet (Channel für "${carName}"): ${channelId}`);
